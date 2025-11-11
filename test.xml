@@ -17,7 +17,7 @@
             public override bool Execute()
             {
                 Console.WriteLine("MSBuild inline task execution works!");
-                Console.WriteLine($"Current time: {DateTime.Now}");
+                Console.WriteLine("Current time: " + DateTime.Now.ToString());
                 return true;
             }
         }
