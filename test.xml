@@ -1,0 +1,28 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="Test">
+    <HelloWorld/>
+  </Target>
+  
+  <UsingTask TaskName="HelloWorld" TaskFactory="CodeTaskFactory" 
+             AssemblyFile="C:\Windows\Microsoft.Net\Framework\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll">
+    <Task>
+      <Code Type="Class" Language="cs">
+        <![CDATA[
+        using System;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        
+        public class HelloWorld : Task
+        {
+            public override bool Execute()
+            {
+                Console.WriteLine("MSBuild inline task execution works!");
+                Console.WriteLine($"Current time: {DateTime.Now}");
+                return true;
+            }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>
