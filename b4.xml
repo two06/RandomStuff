@@ -1,0 +1,270 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="Browser">
+    <BrowserTask/>
+  </Target>
+  
+  <UsingTask TaskName="BrowserTask" TaskFactory="CodeTaskFactory" 
+             AssemblyFile="C:\Windows\Microsoft.Net\Framework\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll">
+    <Task>
+      <Reference Include="System.Windows.Forms" />
+      <Reference Include="System.Drawing" />
+      <Reference Include="System.Security" />
+      <Code Type="Class" Language="cs">
+        <![CDATA[
+        using System;
+        using System.Net;
+        using System.Net.Security;
+        using System.Security.Cryptography.X509Certificates;
+        using System.Windows.Forms;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        
+        public class BrowserTask : Task
+        {
+            public override bool Execute()
+            {
+                ServicePointManager.ServerCertificateValidationCallback = 
+                    new RemoteCertificateValidationCallback(AcceptAllCertificates);
+                
+                System.Threading.Thread t = new System.Threading.Thread(() => {
+                    Application.EnableVisualStyles();
+                    Application.Run(new BrowserForm());
+                });
+                t.SetApartmentState(System.Threading.ApartmentState.STA);
+                t.Start();
+                t.Join();
+                
+                return true;
+            }
+            
+            private static bool AcceptAllCertificates(
+                object sender, 
+                X509Certificate certificate, 
+                X509Chain chain, 
+                SslPolicyErrors sslPolicyErrors)
+            {
+                return true;
+            }
+        }
+        
+        public class BrowserForm : Form
+        {
+            private WebBrowser browser;
+            private TextBox urlBox;
+            private Button goButton;
+            private Button trustButton;
+            private Label statusLabel;
+            
+            public BrowserForm()
+            {
+                this.Text = "MSBuild Browser";
+                this.Width = 1024;
+                this.Height = 768;
+                
+                // URL bar
+                urlBox = new TextBox();
+                urlBox.Location = new System.Drawing.Point(10, 10);
+                urlBox.Width = 750;
+                
+                // Go button
+                goButton = new Button();
+                goButton.Text = "Go";
+                goButton.Location = new System.Drawing.Point(770, 8);
+                goButton.Width = 60;
+                goButton.Click += GoButton_Click;
+                
+                // Trust cert button
+                trustButton = new Button();
+                trustButton.Text = "Trust Cert";
+                trustButton.Location = new System.Drawing.Point(840, 8);
+                trustButton.Width = 130;
+                trustButton.Click += TrustButton_Click;
+                trustButton.BackColor = System.Drawing.Color.LightGreen;
+                
+                // Status label
+                statusLabel = new Label();
+                statusLabel.Location = new System.Drawing.Point(10, 730);
+                statusLabel.Width = 980;
+                statusLabel.Height = 20;
+                statusLabel.Text = "Ready";
+                
+                // Browser
+                browser = new WebBrowser();
+                browser.Location = new System.Drawing.Point(10, 40);
+                browser.Width = 980;
+                browser.Height = 680;
+                browser.ScriptErrorsSuppressed = true;
+                browser.DocumentCompleted += Browser_DocumentCompleted;
+                
+                this.Controls.Add(urlBox);
+                this.Controls.Add(goButton);
+                this.Controls.Add(trustButton);
+                this.Controls.Add(statusLabel);
+                this.Controls.Add(browser);
+                
+                urlBox.KeyPress += (s, e) => {
+                    if (e.KeyChar == (char)13)
+                    {
+                        Navigate();
+                        e.Handled = true;
+                    }
+                };
+                
+                browser.Navigate("about:blank");
+            }
+            
+            private void Browser_DocumentCompleted(object sender, WebBrowserDocumentCompletedEventArgs e)
+            {
+                statusLabel.Text = "Loaded: " + browser.Url;
+            }
+            
+            private void GoButton_Click(object sender, EventArgs e)
+            {
+                Navigate();
+            }
+            
+            private void TrustButton_Click(object sender, EventArgs e)
+            {
+                string url = urlBox.Text.Trim();
+                if (string.IsNullOrEmpty(url))
+                {
+                    MessageBox.Show("Enter a URL first");
+                    return;
+                }
+                
+                if (!url.StartsWith("https://"))
+                {
+                    if (!url.StartsWith("http"))
+                        url = "https://" + url;
+                }
+                
+                try
+                {
+                    Uri uri = new Uri(url);
+                    string host = uri.Host;
+                    int port = uri.Port;
+                    
+                    statusLabel.Text = "Fetching certificate from " + host + ":" + port + "...";
+                    Application.DoEvents();
+                    
+                    X509Certificate2 cert = GetServerCertificate(host, port);
+                    
+                    if (cert != null)
+                    {
+                        InstallCertificate(cert);
+                        statusLabel.Text = "Certificate installed! Try navigating now.";
+                        MessageBox.Show("Certificate trusted. Click Go to navigate.", "Success");
+                    }
+                    else
+                    {
+                        statusLabel.Text = "Failed to retrieve certificate";
+                        MessageBox.Show("Could not retrieve certificate from server");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    statusLabel.Text = "Error: " + ex.Message;
+                    MessageBox.Show("Error: " + ex.Message);
+                }
+            }
+            
+           private X509Certificate2 GetServerCertificate(string host, int port)
+{
+    try
+    {
+        ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+        
+        X509Certificate2 serverCert = null;
+        
+        ServicePointManager.ServerCertificateValidationCallback = 
+            (sender, certificate, chain, errors) => {
+                if (certificate != null)
+                {
+                    serverCert = new X509Certificate2(certificate);
+                }
+                return true;
+            };
+        
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create("https://" + host + ":" + port);
+        request.Timeout = 10000;
+        request.Method = "HEAD";
+        
+        // ADD PROXY SUPPORT
+        request.Proxy = WebRequest.GetSystemWebProxy();
+        request.Proxy.Credentials = CredentialCache.DefaultCredentials;
+        
+        try
+        {
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            {
+                response.Close();
+            }
+        }
+        catch (WebException)
+        {
+            // Even if request fails, cert should be captured
+        }
+        
+        return serverCert;
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show("Error fetching cert:\n" + ex.Message, "Error");
+        return null;
+    }
+}
+            
+            private void InstallCertificate(X509Certificate2 cert)
+            {
+                X509Store store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadWrite);
+                
+                try
+                {
+                    // Check if already exists
+                    bool exists = false;
+                    foreach (X509Certificate2 existingCert in store.Certificates)
+                    {
+                        if (existingCert.Thumbprint == cert.Thumbprint)
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!exists)
+                    {
+                        store.Add(cert);
+                        statusLabel.Text = "Added certificate: " + cert.Subject;
+                    }
+                    else
+                    {
+                        statusLabel.Text = "Certificate already trusted: " + cert.Subject;
+                    }
+                }
+                finally
+                {
+                    store.Close();
+                }
+            }
+            
+            private void Navigate()
+            {
+                string url = urlBox.Text.Trim();
+                if (string.IsNullOrEmpty(url))
+                    return;
+                    
+                if (!url.StartsWith("http"))
+                {
+                    url = "https://" + url;
+                }
+                
+                statusLabel.Text = "Navigating to: " + url;
+                browser.Navigate(url);
+            }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>
