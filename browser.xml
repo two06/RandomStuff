@@ -1,0 +1,102 @@
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="Browser">
+    <BrowserTask/>
+  </Target>
+  
+  <UsingTask TaskName="BrowserTask" TaskFactory="CodeTaskFactory" 
+             AssemblyFile="C:\Windows\Microsoft.Net\Framework\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll">
+    <Task>
+      <Reference Include="System.Windows.Forms" />
+      <Reference Include="System.Drawing" />
+      <Code Type="Class" Language="cs">
+        <![CDATA[
+        using System;
+        using System.Windows.Forms;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        
+        public class BrowserTask : Task
+        {
+            public override bool Execute()
+            {
+                System.Threading.Thread t = new System.Threading.Thread(() => {
+                    Application.EnableVisualStyles();
+                    Application.Run(new BrowserForm());
+                });
+                t.SetApartmentState(System.Threading.ApartmentState.STA);
+                t.Start();
+                t.Join();
+                
+                return true;
+            }
+        }
+        
+        public class BrowserForm : Form
+        {
+            private WebBrowser browser;
+            private TextBox urlBox;
+            private Button goButton;
+            
+            public BrowserForm()
+            {
+                this.Text = "MSBuild Browser";
+                this.Width = 1024;
+                this.Height = 768;
+                
+                // URL bar
+                urlBox = new TextBox();
+                urlBox.Location = new System.Drawing.Point(10, 10);
+                urlBox.Width = 850;
+                urlBox.Text = "https://www.google.com";
+                urlBox.KeyPress += UrlBox_KeyPress;
+                
+                // Go button
+                goButton = new Button();
+                goButton.Text = "Go";
+                goButton.Location = new System.Drawing.Point(870, 8);
+                goButton.Width = 100;
+                goButton.Click += GoButton_Click;
+                
+                // Browser
+                browser = new WebBrowser();
+                browser.Location = new System.Drawing.Point(10, 40);
+                browser.Width = 980;
+                browser.Height = 680;
+                browser.ScriptErrorsSuppressed = true;
+                
+                this.Controls.Add(urlBox);
+                this.Controls.Add(goButton);
+                this.Controls.Add(browser);
+                
+                // Navigate to initial URL
+                browser.Navigate("https://www.google.com");
+            }
+            
+            private void GoButton_Click(object sender, EventArgs e)
+            {
+                Navigate();
+            }
+            
+            private void UrlBox_KeyPress(object sender, KeyPressEventArgs e)
+            {
+                if (e.KeyChar == (char)13) // Enter key
+                {
+                    Navigate();
+                }
+            }
+            
+            private void Navigate()
+            {
+                string url = urlBox.Text;
+                if (!url.StartsWith("http"))
+                {
+                    url = "https://" + url;
+                }
+                browser.Navigate(url);
+            }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>
