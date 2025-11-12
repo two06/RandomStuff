@@ -11,6 +11,9 @@
       <Code Type="Class" Language="cs">
         <![CDATA[
         using System;
+        using System.Net;
+        using System.Net.Security;
+        using System.Security.Cryptography.X509Certificates;
         using System.Windows.Forms;
         using Microsoft.Build.Framework;
         using Microsoft.Build.Utilities;
@@ -19,6 +22,10 @@
         {
             public override bool Execute()
             {
+                // Accept all SSL certificates
+                ServicePointManager.ServerCertificateValidationCallback = 
+                    new RemoteCertificateValidationCallback(AcceptAllCertificates);
+                
                 System.Threading.Thread t = new System.Threading.Thread(() => {
                     Application.EnableVisualStyles();
                     Application.Run(new BrowserForm());
@@ -28,6 +35,15 @@
                 t.Join();
                 
                 return true;
+            }
+            
+            private static bool AcceptAllCertificates(
+                object sender, 
+                X509Certificate certificate, 
+                X509Chain chain, 
+                SslPolicyErrors sslPolicyErrors)
+            {
+                return true; // Accept all certificates
             }
         }
         
@@ -68,7 +84,6 @@
                 this.Controls.Add(goButton);
                 this.Controls.Add(browser);
                 
-                // Navigate to initial URL
                 browser.Navigate("https://www.google.com");
             }
             
@@ -79,7 +94,7 @@
             
             private void UrlBox_KeyPress(object sender, KeyPressEventArgs e)
             {
-                if (e.KeyChar == (char)13) // Enter key
+                if (e.KeyChar == (char)13)
                 {
                     Navigate();
                 }
