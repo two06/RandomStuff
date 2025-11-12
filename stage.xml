@@ -63,6 +63,9 @@
             
             private byte[] FetchAssembly(string url)
             {
+                // Enable TLS 1.2
+                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+                
                 WebClient wc = new WebClient();
                 
                 // Use system proxy settings
